@@ -48,6 +48,58 @@
       font-weight: normal;
       letter-spacing: 1px;
     }
+    h2 {
+      margin: 40px 0 20px;
+      font-size: 1.3rem;
+      letter-spacing: 1px;
+      color: #eebbc3;
+    }
+    .info {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      margin-left: 6px;
+      border: 1px solid #b8c1ec;
+      border-radius: 50%;
+      font-size: 0.75rem;
+      font-style: italic;
+      font-family: Georgia, serif;
+      color: #b8c1ec;
+      cursor: help;
+      vertical-align: middle;
+    }
+    .info .tooltip {
+      visibility: hidden;
+      opacity: 0;
+      position: absolute;
+      bottom: 130%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 260px;
+      padding: 10px 12px;
+      background: #232946;
+      color: #fffffe;
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+      font: normal 0.8rem/1.4 'Segoe UI', Arial, sans-serif;
+      letter-spacing: normal;
+      text-align: left;
+      transition: opacity 0.15s;
+      z-index: 10;
+    }
+    .info:hover .tooltip,
+    .info:focus .tooltip {
+      visibility: visible;
+      opacity: 1;
+    }
+    .note {
+      margin-top: 16px;
+      font-size: 0.8rem;
+      color: #b8c1ec;
+    }
     @media (max-width: 600px) {
       .container {
         padding: 20px 10px;
@@ -87,6 +139,30 @@
         <span class="countdown-label">ms</span>
       </div>
     </div>
+    <h2>Working time left
+      <span class="info" tabindex="0" aria-label="How is this calculated?">i
+        <span class="tooltip" role="tooltip">Uses an exemplary working time of 09:00–17:00 (8 h per day, 40 h per week). Weekends and public holidays in Baden-Württemberg are excluded. Christmas Eve and New Year's Eve count as half days (09:00–13:00). The clock only ticks during working hours. Vacation is not considered.</span>
+      </span>
+    </h2>
+    <div class="countdown">
+      <div class="countdown-item">
+        <span id="workdays">0</span>
+        <span class="countdown-label">Working Days</span>
+      </div>
+      <div class="countdown-item">
+        <span id="workhours">0</span>
+        <span class="countdown-label">Hours</span>
+      </div>
+      <div class="countdown-item">
+        <span id="workminutes">00</span>
+        <span class="countdown-label">Minutes</span>
+      </div>
+      <div class="countdown-item">
+        <span id="workseconds">00</span>
+        <span class="countdown-label">Seconds</span>
+      </div>
+    </div>
+    <p class="note">One working day = 8 hours. The counter only runs during working hours.</p>
   </div>
   <script>
     // Ziel-Datum: 31.03.2027, 00:00:00
@@ -95,6 +171,114 @@
     function pad(num, size) {
       let s = "000" + num;
       return s.substr(s.length - size);
+    }
+
+    // Ostersonntag (Anonymer gregorianischer Algorithmus / Meeus-Jones-Butcher)
+    function easterSunday(year) {
+      const a = year % 19;
+      const b = Math.floor(year / 100);
+      const c = year % 100;
+      const d = Math.floor(b / 4);
+      const e = b % 4;
+      const f = Math.floor((b + 8) / 25);
+      const g = Math.floor((b - f + 1) / 3);
+      const h = (19 * a + b - d - g + 15) % 30;
+      const i = Math.floor(c / 4);
+      const k = c % 4;
+      const l = (32 + 2 * e + 2 * i - h - k) % 7;
+      const m = Math.floor((a + 11 * h + 22 * l) / 451);
+      const month = Math.floor((h + l - 7 * m + 114) / 31);
+      const day = ((h + l - 7 * m + 114) % 31) + 1;
+      return new Date(year, month - 1, day);
+    }
+
+    function dateKey(d) {
+      return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+    }
+
+    // Gesetzliche Feiertage in Baden-Württemberg (inkl. bundesweite)
+    const holidayCache = {};
+    function holidaysBW(year) {
+      if (holidayCache[year]) return holidayCache[year];
+      const easter = easterSunday(year);
+      const offset = (days) => new Date(year, easter.getMonth(), easter.getDate() + days);
+      const dates = [
+        new Date(year, 0, 1),   // Neujahr
+        new Date(year, 0, 6),   // Heilige Drei Könige
+        offset(-2),             // Karfreitag
+        offset(1),              // Ostermontag
+        new Date(year, 4, 1),   // Tag der Arbeit
+        offset(39),             // Christi Himmelfahrt
+        offset(50),             // Pfingstmontag
+        offset(60),             // Fronleichnam
+        new Date(year, 9, 3),   // Tag der Deutschen Einheit
+        new Date(year, 10, 1),  // Allerheiligen
+        new Date(year, 11, 25), // 1. Weihnachtstag
+        new Date(year, 11, 26)  // 2. Weihnachtstag
+      ];
+      holidayCache[year] = new Set(dates.map(dateKey));
+      return holidayCache[year];
+    }
+
+    // Liefert den Arbeitstag-Anteil: 1 = voller Tag, 0.5 = halber Tag, 0 = frei
+    function workingDayValue(d) {
+      const dow = d.getDay();
+      if (dow === 0 || dow === 6) return 0;
+      if (holidaysBW(d.getFullYear()).has(dateKey(d))) return 0;
+      // Heiligabend und Silvester: halber Urlaubstag (Firmenregelung)
+      if (d.getMonth() === 11 && (d.getDate() === 24 || d.getDate() === 31)) return 0.5;
+      return 1;
+    }
+
+    // Beispielhafte Arbeitszeit: 09:00–17:00 (halbe Tage: 09:00–13:00)
+    const WORK_START_HOUR = 9;
+    const HOURS_PER_DAY = 8;
+    const HOUR_MS = 60 * 60 * 1000;
+
+    // Arbeitszeitfenster [start, end] eines Tages oder null, wenn frei
+    function workWindow(d) {
+      const value = workingDayValue(d);
+      if (value === 0) return null;
+      const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), WORK_START_HOUR);
+      const end = new Date(start.getTime() + value * HOURS_PER_DAY * HOUR_MS);
+      return { start, end };
+    }
+
+    // Verbleibende Arbeitszeit (ms) eines Tages ab "now"
+    function remainingWorkMsOfDay(d, now) {
+      const w = workWindow(d);
+      if (!w) return 0;
+      const from = Math.max(w.start.getTime(), now.getTime());
+      return Math.max(0, w.end.getTime() - from);
+    }
+
+    // Arbeitszeit (ms) von morgen bis zum Tag vor dem Zieldatum
+    function futureWorkMs(now, to) {
+      let total = 0;
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      while (d < to) {
+        const w = workWindow(d);
+        if (w) total += w.end - w.start;
+        d.setDate(d.getDate() + 1);
+      }
+      return total;
+    }
+
+    let lastWorkdayKey = null;
+    let cachedFutureWorkMs = 0;
+    function updateWorkingDays(now) {
+      const key = dateKey(now);
+      if (key !== lastWorkdayKey) {
+        lastWorkdayKey = key;
+        cachedFutureWorkMs = futureWorkMs(now, targetDate);
+      }
+      const todayMs = now < targetDate ? remainingWorkMsOfDay(now, now) : 0;
+      const totalMs = cachedFutureWorkMs + todayMs;
+      const dayMs = HOURS_PER_DAY * HOUR_MS;
+      document.getElementById('workdays').textContent = Math.floor(totalMs / dayMs);
+      document.getElementById('workhours').textContent = Math.floor((totalMs % dayMs) / HOUR_MS);
+      document.getElementById('workminutes').textContent = pad(Math.floor((totalMs / 60000) % 60), 2);
+      document.getElementById('workseconds').textContent = pad(Math.floor((totalMs / 1000) % 60), 2);
     }
 
     function updateCountdown() {
@@ -114,6 +298,7 @@
       document.getElementById('minutes').textContent = pad(minutes, 2);
       document.getElementById('seconds').textContent = pad(seconds, 2);
       document.getElementById('milliseconds').textContent = pad(milliseconds, 3);
+      updateWorkingDays(now);
     }
 
     // Update alle 33ms für flüssige Millisekunden-Anzeige
